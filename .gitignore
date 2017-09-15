@@ -1,0 +1,11 @@
+.DS_Store
+*.pyc
+models/
+temp_files/
+models_oc/
+*.pkl
+*results/
+*results_oc/
+temp*
+core*
+*.swp
