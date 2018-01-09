@@ -82,9 +82,10 @@ class AOCAgent_THEANO():
 
     self.get_state = theano.function([x], s, on_unused_input='warn')
     self.get_policy = theano.function([s, o], intra_option_policy)
-    self.get_termination = theano.function([s], terms)
-    self.get_q = theano.function([s], q_vals)
-    self.get_V = theano.function([s], V)
+    self.get_termination = theano.function([x], terms)
+    self.get_q = theano.function([x], q_vals)
+    self.get_q_from_s = theano.function([s], q_vals)
+    self.get_V = theano.function([x], V)
 
     self.rms_grads = theano.function([x,a,y,o, delib], grad_rms, updates=updates, on_unused_input='warn')
     print "ALL COMPILED"
@@ -140,7 +141,7 @@ class AOCAgent_THEANO():
     return self.rng.choice(range(self.num_actions), p=p[-1])
 
   def get_policy_over_options(self, s):
-    return self.get_q(s)[0].argmax() if self.rng.rand() > self.args.option_epsilon else self.rng.randint(self.args.num_options)
+    return self.get_q_from_s(s)[0].argmax() if self.rng.rand() > self.args.option_epsilon else self.rng.randint(self.args.num_options)
 
   def update_internal_state(self, x):
     self.current_s = self.get_state([x])[0]
@@ -193,13 +194,13 @@ class AOCAgent_THEANO():
     self.total_reward += raw_reward
     reward = np.clip(raw_reward, -1, 1)
 
+    self.terminated = self.get_termination([new_x])[0][self.current_o] > self.rng.rand()
+    self.termination_counter += self.terminated
+
     self.x_seq[self.t_counter] = np.copy(x)
     self.o_seq[self.t_counter] = np.copy(self.current_o)
     self.a_seq[self.t_counter] = np.copy(action)
-    self.r_seq[self.t_counter] = np.copy(float(reward)) - (float(self.terminated)*self.delib*float(self.frame_counter > 1))
-
-    self.terminated = self.get_termination([self.current_s])[0][self.current_o] > self.rng.rand()
-    self.termination_counter += self.terminated
+    self.r_seq[self.t_counter] = np.copy(float(reward)) - (float(self.terminated)*self.delib*(1-float(end_ep)))
 
     self.t_counter += 1
 
@@ -210,8 +211,7 @@ class AOCAgent_THEANO():
     option_term = (self.terminated and self.t_counter >= self.args.update_freq)
     if self.t_counter == self.args.max_update_freq or end_ep or option_term:
       if not self.args.testing:
-        d = (self.delib*float(self.frame_counter > 1)) # add delib if termination because it isn't part of V
-        V = self.get_V([self.current_s])[0]-d if self.terminated else self.get_q([self.current_s])[0][self.current_o]
+        V = self.get_V([new_x])[0] if self.terminated else self.get_q([new_x])[0][self.current_o]
         R = 0 if end_ep else V
         V = []
         for j in range(self.t_counter-1,-1,-1):
